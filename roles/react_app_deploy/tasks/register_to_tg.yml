@@ -7,15 +7,24 @@
 - name: Get EC2 instance information
   community.aws.ec2_instance_info:
     instance_ids:
-
       - "{{ ec2_instance_id.content }}"
     region: eu-central-1
   register: ec2_info
 
-- name: Extract Environment tag
+- name: Extract Environment tag safely
   set_fact:
-    environment: "{{ ec2_info.instances[0].tags.Environment }}"
-    
+    environment: "{{ ec2_info.instances[0].tags['Environment'] | default('') }}"
+
+- name: Fail if Environment tag missing on instance
+  fail:
+    msg: "EC2 instance does not have Environment tag"
+  when: environment == ''
+
+- name: Get all target groups
+  community.aws.elb_target_group_info:
+    region: eu-central-1
+  register: tg_info
+
 - name: Select correct target group
   set_fact:
     target_group_arn: "{{ item.target_group_arn }}"
