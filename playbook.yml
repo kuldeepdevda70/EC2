@@ -9,9 +9,15 @@
 
   tasks:
 
+    - name: Get instance ID from metadata
+      uri:
+        url: http://169.254.169.254/latest/meta-data/instance-id
+        return_content: yes
+      register: ec2_instance_id
+
     - name: Attach instance to target group
       community.aws.elb_target:
         target_group_arn: "{{ target_group_arn }}"
-        target_id: "{{ ansible_ec2_instance_id }}"
+        target_id: "{{ ec2_instance_id.content }}"
         state: present
         region: eu-central-1
