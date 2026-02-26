@@ -6,24 +6,8 @@
   roles:
     - nginx_react
     - react_app_deploy
-
-
-
-
-
-
-
-
-    
-
-
-
-
-
-
-
-    
-
+  vars:
+  environment: "{{ environment | default('blue') }}"
  
 
         
