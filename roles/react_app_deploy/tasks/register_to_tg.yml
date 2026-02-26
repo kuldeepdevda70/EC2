@@ -1,0 +1,35 @@
+- name: Get instance ID from metadata
+  uri:
+    url: http://169.254.169.254/latest/meta-data/instance-id
+    return_content: yes
+  register: ec2_instance_id
+
+- name: Get EC2 instance information
+  community.aws.ec2_instance_info:
+    instance_ids:
+    
+      - "{{ ec2_instance_id.content }}"
+    region: eu-central-1
+  register: ec2_info
+
+- name: Extract Environment tag
+  set_fact:
+    environment: "{{ ec2_info.instances[0].tags.Environment }}"
+
+- name: Get all target groups
+  community.aws.elb_target_group_info:
+    region: eu-central-1
+  register: tg_info
+
+- name: Select correct target group
+  set_fact:
+    target_group_arn: "{{ item.TargetGroupArn }}"
+  loop: "{{ tg_info.target_groups }}"
+  when: item.Tags.Environment is defined and item.Tags.Environment == environment
+
+- name: Attach instance to target group
+  community.aws.elb_target:
+    target_group_arn: "{{ target_group_arn }}"
+    target_id: "{{ ec2_instance_id.content }}"
+    state: present
+    region: eu-central-1
