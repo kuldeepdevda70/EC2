@@ -21,3 +21,14 @@
         target_id: "{{ ec2_instance_id.content }}"
         state: present
         region: eu-central-1
+
+
+
+
+
+
+
+
+
+
+        
