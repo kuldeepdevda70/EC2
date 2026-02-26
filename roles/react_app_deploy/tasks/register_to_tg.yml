@@ -31,8 +31,12 @@
   loop: "{{ tg_info.target_groups }}"
   when:
     - item.tags is defined
-    - item.tags.Environment is defined
+    - "'Environment' in item.tags"
     - item.tags.Environment == environment
+
+- name: Debug selected target group
+  debug:
+    var: target_group_arn
 
 - name: Fail if no target group found
   fail:
