@@ -1,61 +1,38 @@
----
 - name: Get instance ID from metadata
   uri:
     url: http://169.254.169.254/latest/meta-data/instance-id
     return_content: yes
   register: ec2_instance_id
 
-# -------------------------------------------------
-# 2️⃣ Get EC2 Instance Info
-# -------------------------------------------------
 - name: Get EC2 instance information
   community.aws.ec2_instance_info:
     instance_ids:
+
       - "{{ ec2_instance_id.content }}"
-    region: "{{ aws_region }}"
+    region: eu-central-1
   register: ec2_info
 
-# -------------------------------------------------
-# 3️⃣ Extract Environment Tag (blue/green)
-# -------------------------------------------------
 - name: Extract Environment tag
   set_fact:
-    environment: "{{ ec2_info.instances[0].tags['Environment'] | default('') }}"
-
-- name: Fail if Environment tag missing
-  fail:
-    msg: "EC2 instance does not have Environment tag"
-  when: environment == ''
-
-# -------------------------------------------------
-# 4️⃣ Get Target Group By Name
-# -------------------------------------------------
-- name: Get target group by name
-  community.aws.elb_target_group_info:
-    names:
-      - "react-{{ environment }}-tg"
-    region: "{{ aws_region }}"
-  register: tg_info
-
-- name: Fail if target group not found
-  fail:
-    msg: "Target group react-{{ environment }}-tg not found"
-  when: tg_info.target_groups | length == 0
-
-- name: Set target group ARN
+    environment: "{{ ec2_info.instances[0].tags.Environment }}"
+    
+- name: Select correct target group
   set_fact:
-    target_group_arn: "{{ tg_info.target_groups[0].target_group_arn }}"
+    target_group_arn: "{{ item.target_group_arn }}"
+  loop: "{{ tg_info.target_groups }}"
+  when:
+    - item.tags is defined
+    - item.tags.Environment is defined
+    - item.tags.Environment == environment
 
-# -------------------------------------------------
-# 5️⃣ Attach Instance to Target Group
-# -------------------------------------------------
+- name: Fail if no target group found
+  fail:
+    msg: "No matching target group found for environment {{ environment }}"
+  when: target_group_arn is not defined
+
 - name: Attach instance to target group
   community.aws.elb_target:
     target_group_arn: "{{ target_group_arn }}"
     target_id: "{{ ec2_instance_id.content }}"
     state: present
-    region: "{{ aws_region }}"
-
-- name: Success message
-  debug:
-    msg: "Instance successfully attached to react-{{ environment }}-tg"
+    region: eu-central-1
