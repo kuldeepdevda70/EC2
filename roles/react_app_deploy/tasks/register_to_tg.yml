@@ -1,9 +1,15 @@
+# -------------------------------------------------
+# 1️⃣ Get Instance ID from AWS Metadata
+# -------------------------------------------------
 - name: Get instance ID from metadata
   uri:
     url: http://169.254.169.254/latest/meta-data/instance-id
     return_content: yes
   register: ec2_instance_id
 
+# -------------------------------------------------
+# 2️⃣ Get EC2 Instance Details
+# -------------------------------------------------
 - name: Get EC2 instance information
   community.aws.ec2_instance_info:
     instance_ids:
@@ -11,6 +17,9 @@
     region: eu-central-1
   register: ec2_info
 
+# -------------------------------------------------
+# 3️⃣ Extract Environment Tag
+# -------------------------------------------------
 - name: Extract Environment tag safely
   set_fact:
     environment: "{{ ec2_info.instances[0].tags['Environment'] | default('') }}"
@@ -20,32 +29,51 @@
     msg: "EC2 instance does not have Environment tag"
   when: environment == ''
 
+# -------------------------------------------------
+# 4️⃣ Wait (avoids AWS timing issue)
+# -------------------------------------------------
+- name: Wait before fetching target groups
+  pause:
+    seconds: 15
+
+# -------------------------------------------------
+# 5️⃣ Get All Target Groups WITH Tags
+# -------------------------------------------------
 - name: Get all target groups
   community.aws.elb_target_group_info:
     region: eu-central-1
+    include_tags: true
   register: tg_info
 
-- name: Select correct target group
+# -------------------------------------------------
+# 6️⃣ Select Matching Target Group Dynamically
+# -------------------------------------------------
+- name: Select correct target group based on Environment tag
   set_fact:
-    target_group_arn: "{{ item.target_group_arn }}"
-  loop: "{{ tg_info.target_groups }}"
-  when:
-    - item.tags is defined
-    - "'Environment' in item.tags"
-    - item.tags.Environment == environment
+    target_group_arn: >-
+      {{
+        tg_info.target_groups
+        | selectattr('tags.Environment', 'defined')
+        | selectattr('tags.Environment', 'equalto', environment)
+        | map(attribute='target_group_arn')
+        | first
+      }}
 
-- name: Debug selected target group
-  debug:
-    var: target_group_arn
-
-- name: Fail if no target group found
+- name: Fail if no matching target group found
   fail:
     msg: "No matching target group found for environment {{ environment }}"
   when: target_group_arn is not defined
 
+# -------------------------------------------------
+# 7️⃣ Attach Instance to Target Group
+# -------------------------------------------------
 - name: Attach instance to target group
   community.aws.elb_target:
     target_group_arn: "{{ target_group_arn }}"
     target_id: "{{ ec2_instance_id.content }}"
     state: present
     region: eu-central-1
+
+- name: Success message
+  debug:
+    msg: "Instance successfully attached to target group {{ target_group_arn }}"
